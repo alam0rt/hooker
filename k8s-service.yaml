@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  creationTimestamp: null
+  labels:
+    app: hooker
+  name: hooker
+  namespace: test
+spec:
+  ports:
+  - name: "http-hooker"
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: hooker
+  type: ClusterIP
+status:
+  loadBalancer: {}

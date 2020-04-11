@@ -7,6 +7,7 @@ metadata:
   name: hooker
   namespace: test
 spec:
+
   replicas: 1
   selector:
     matchLabels:
@@ -18,8 +19,24 @@ spec:
       labels:
         app: hooker
     spec:
+      volumes:
+        - name: message-template
+          configMap:
+            name: message-template
+            items:
+              - key: message.tmpl
+                path: message.tmpl
       containers:
       - image: samlockart/hooker
         name: hooker
+        args:
+          - "-upstream=http://webhook.chatops.svc.cluster.local:9000"
+          - "-name=alertmanager"
+          - "-template=/app/message.tmpl"
+          - "-port=8080"
         resources: {}
+        volumeMounts:
+          - mountPath: "/app/message.tmpl"
+            subPath: "message.tmpl"
+            name: message-template
 status: {}

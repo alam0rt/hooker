@@ -15,20 +15,26 @@ import (
 )
 
 var (
-	upstreamHost   string
-	templatePath   string
-	httpPort       int
+	upstreamHost  string
+	templatePath  string
+	avatarURL     string
+	messageFormat string
+	displayName   string
+	httpPort      int
+	// TemplateBuffer holds the loaded template
 	TemplateBuffer []byte
 )
 
 func init() {
-	flag.StringVar(&upstreamHost, "upstream", "http://localhost:3070", "the webhook which recieves the message")
+	flag.StringVar(&upstreamHost, "upstream", "http://localhost:9000", "the webhook which recieves the message")
 	flag.IntVar(&httpPort, "port", 8080, "which port ot listen on")
 	flag.StringVar(&templatePath, "template", "message.tmpl", "path to Go template")
+	flag.StringVar(&avatarURL, "avatar", "https://i.imgur.com/IDOBtEJ.png", "URL of avatar to use")
+	flag.StringVar(&messageFormat, "format", "html", "html or plain formatting of messages")
+	flag.StringVar(&displayName, "name", "Alertmanager", "name of the bot")
 }
 
 func loadTemplate() error {
-
 	var err error
 	TemplateBuffer, err = ioutil.ReadFile(templatePath)
 	if err != nil {
@@ -38,8 +44,7 @@ func loadTemplate() error {
 }
 
 const (
-	path      = "/api/v1/matrix/hook/"
-	avatarURL = "https://i.imgur.com/IDOBtEJ.png"
+	path = "/api/v1/matrix/hook/"
 )
 
 type (
@@ -90,19 +95,12 @@ func main() {
 	if err != nil {
 		fmt.Printf("unable to open template: %v", err)
 	}
-	fmt.Print(TemplateBuffer)
 	log.Printf("starting: %v", httpPort)
 	http.HandleFunc(path, handler)
+	http.HandleFunc("/ping", ping)
 
 	http.ListenAndServe(":8080", nil)
 }
-
-var tmpl = []byte(`
-[{{ .Status }}]
-{{ range .Alerts }}
-  {{ .StartsAt }}
-{{ end }}
-`)
 
 func decodeMessage(r *http.Request) (m *HookMessage, e error) {
 	dec := json.NewDecoder(r.Body)
@@ -113,6 +111,7 @@ func decodeMessage(r *http.Request) (m *HookMessage, e error) {
 		log.Printf("error decoding message: %v", err)
 		return nil, err
 	}
+
 	return m, nil
 
 }
@@ -120,6 +119,7 @@ func decodeMessage(r *http.Request) (m *HookMessage, e error) {
 func templateMessage(m *HookMessage) (b []byte, err error) {
 	var buf bytes.Buffer
 	tmpl, err := template.New("template").Parse(string(TemplateBuffer))
+
 	if err != nil {
 		log.Printf("couldn't template message: %v", err)
 		return nil, err
@@ -131,15 +131,16 @@ func templateMessage(m *HookMessage) (b []byte, err error) {
 		return nil, err
 
 	}
+
 	return buf.Bytes(), err
 }
 
 func encodeMessage(b []byte) ([]byte, error) {
 	m := &MatrixMessage{
 		Text:        string(b),
-		Format:      "test",
+		Format:      messageFormat,
 		AvatarURL:   avatarURL,
-		DisplayName: "bot",
+		DisplayName: displayName,
 	}
 
 	j, err := json.Marshal(m)
@@ -162,29 +163,50 @@ func sendMessage(m []byte, token string) (resp *http.Response, e error) {
 
 }
 
+func ping(w http.ResponseWriter, r *http.Request) {
+	log.Printf("ping from %v (%v)", r.Host, r.UserAgent())
+	http.Error(w, "pong", 200)
+}
+
 func handler(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimLeft(r.URL.Path[1:], path)
-	fmt.Fprintf(w, "%s", r.URL.Path[1:])
+
+	if r.Method != http.MethodPost {
+		log.Printf("%v doesn't support %v", r.URL.Path[1:], r.Method)
+		http.Error(w, "invalid method", 401)
+		return
+	}
+
+	log.Printf("incoming from %v (%v)", r.Host, r.UserAgent())
 
 	message, err := decodeMessage(r)
 	if err != nil {
 		http.Error(w, "invalid request body", 401)
 		log.Printf("couldn't decode incoming webhook: %v", err)
+		return
 	}
 
 	templatedMessage, err := templateMessage(message)
 	if err != nil {
 		http.Error(w, "invalid request body", 401)
+		log.Printf("couldn't template message: %v", err)
+		return
 	}
 
 	jsonResponse, err := encodeMessage(templatedMessage)
 	if err != nil {
 		http.Error(w, "couldn't marshal JSON response", 401)
+		log.Printf("couldn't encode JSON: %v", err)
+		return
 	}
 
 	response, err := sendMessage(jsonResponse, token)
 	if err != nil {
 		http.Error(w, "upstream unavailable", 401)
 	}
+
+	log.Printf("successfully relayed message to %v", upstreamHost)
+	http.Error(w, "success", 200)
+	fmt.Print(string(jsonResponse))
 	response.Body.Close()
 }
