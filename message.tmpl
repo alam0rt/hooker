@@ -1,0 +1,8 @@
+<{{ .Status }}> - {{ .CommonLabels.alertname }} - {{ .CommonLabels.severity }}
+
+{{ range .Alerts -}}
+      *Alert:* {{ .Labels.alertname }}
+      *Started:* {{ .StartsAt}}
+      *Description:* {{ .Annotations.message }}
+      *Runbook:* {{ .Annotations.runbook_url }}
+{{ end }}

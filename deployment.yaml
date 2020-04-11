@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  creationTimestamp: null
+  labels:
+    app: hooker
+  name: hooker
+  namespace: test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hooker
+  strategy: {}
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: hooker
+    spec:
+      containers:
+      - image: samlockart/hooker:latest
+        name: hooker
+        resources: {}
+status: {}
