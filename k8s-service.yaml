@@ -5,7 +5,6 @@ metadata:
   labels:
     app: hooker
   name: hooker
-  namespace: test
 spec:
   ports:
   - name: "http-hooker"
