@@ -15,7 +15,8 @@ import (
 )
 
 var (
-	upstreamHost  string
+	// UpstreamHost is where we POST our translated message to
+	UpstreamHost  string // TODO: figure out how Go deals with scope a bit better :)
 	templatePath  string
 	avatarURL     string
 	messageFormat string
@@ -26,7 +27,7 @@ var (
 )
 
 func init() {
-	flag.StringVar(&upstreamHost, "upstream", "http://localhost:9000", "the webhook which recieves the message")
+	flag.StringVar(&UpstreamHost, "upstream", "http://webhook.chatops.svc.cluster.local:9000", "the webhook which recieves the message")
 	flag.IntVar(&httpPort, "port", 8080, "which port ot listen on")
 	flag.StringVar(&templatePath, "template", "message.tmpl", "path to Go template")
 	flag.StringVar(&avatarURL, "avatar", "https://i.imgur.com/IDOBtEJ.png", "URL of avatar to use")
@@ -152,12 +153,11 @@ func encodeMessage(b []byte) ([]byte, error) {
 }
 
 func sendMessage(m []byte, token string) (resp *http.Response, e error) {
-	host := upstreamHost + path + token
+	host := UpstreamHost + path + token
 	resp, err := http.Post(host, "application/json", bytes.NewBuffer(m))
 	if err != nil {
 		fmt.Printf("couldn't send message to upstream: %v", err)
 	}
-	defer resp.Body.Close()
 
 	return resp, nil
 
@@ -205,7 +205,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "upstream unavailable", 401)
 	}
 
-	log.Printf("successfully relayed message to %v", upstreamHost)
+	log.Printf("successfully relayed message to %v", UpstreamHost)
 	http.Error(w, "success", 200)
 	fmt.Print(string(jsonResponse))
 	response.Body.Close()
