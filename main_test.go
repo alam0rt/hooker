@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -72,7 +73,7 @@ var message = []byte(`
 }
 `)
 
-var request = &http.Request{
+var Request = &http.Request{
 	Host:   "localhost",
 	Method: http.MethodPost,
 	URL:    &url.URL{Host: "localhost:8080"},
@@ -85,21 +86,121 @@ var request = &http.Request{
 	Body: ioutil.NopCloser(strings.NewReader(string(message))),
 }
 
+func TestRequests(t *testing.T) {
+	t.Run("check if ping endpoint responds correctly", checkPing)
+}
+
+func TestMatrixBotName(t *testing.T) {
+	displayName = "Omar" // Set flag variable
+
+	var text = []byte(`junk`)
+	var matrixMessage = &MatrixMessage{}
+	j, err := encodeMessage(text)
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = json.Unmarshal(j, matrixMessage)
+	if err != nil {
+		t.Error(err)
+	}
+
+	want := displayName
+	got := matrixMessage.DisplayName
+	if got != want {
+		t.Errorf("got %q wanted %q", got, want)
+	}
+
+}
+
+func templateCheck(template []byte, message *HookMessage, t *testing.T) []byte {
+	got, err := templateMessage(message, template)
+	if err != nil {
+		t.Error(err)
+	}
+	return got
+}
+
+func NewMockMessage() (*HookMessage, error) {
+	message, err := decodeMessage(Request)
+	if err != nil {
+		return message, err
+	}
+	return message, nil
+}
+
+func TestTemplateMessage(t *testing.T) {
+	var template []byte
+	m, err := NewMockMessage()
+	if err != nil {
+		t.Errorf("error creating mock message: %v", err)
+	}
+
+	// with this template
+	t.Logf("testing template which should print only the status")
+	template = []byte(`{{ .Status -}}`)
+	want := []byte(`firing`)
+	got := templateCheck(template, m, t)
+	if bytes.Compare(got, want) != 0 {
+		t.Errorf("got %q wanted %q", got, want)
+	}
+
+	// with this template
+	templateTwo := []byte(
+		`{{ range .Alerts -}}
+     {{ .Labels.alertname -}}
+     {{ end -}}
+     `)
+	want = []byte(`CPUThrottlingHighCPUThrottlingHigh`)
+	got = templateCheck(templateTwo, m, t)
+	if bytes.Compare(got, want) != 0 {
+		t.Errorf("got %q wanted %q", got, want)
+	}
+
+}
+
 func TestDecodeMessage(t *testing.T) {
-	resp, err := decodeMessage(request)
+	var want interface{}
+	var got interface{}
+
+	m, err := NewMockMessage()
 	if err != nil {
-		t.Errorf("error: %v", err)
+		t.Errorf("error calling decodeMessage: %v", err)
 	}
 
-	if resp.Status != "firing" && resp.Status != "resolved" {
-		t.Errorf("error: expecting .Status to be `firing` or `resolved`, got %v", resp.Status)
+	t.Log("test if first alert's severity has been decoded as `warning`")
+	want = "warning"
+	got = m.Alerts[0].Labels["severity"]
+	if got != want {
+		t.Errorf("got %q wanted %q", got, want)
 	}
 
-	templated, err := templateMessage(resp, tmpl)
+	want = 2
+	got = len(m.Alerts)
+	if got != want {
+		t.Errorf("got %q wanted %q", got, want)
+	}
+
+	want = "firing"
+	got = m.Status
+	if got != want {
+		t.Errorf("got %q wanted %q", got, want)
+	}
+}
+
+func checkPing(t *testing.T) {
+	resp, _ := http.Get("http://localhost:8080/ping")
+	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		t.Errorf("error: %v", err)
+		t.FailNow()
 	}
+	defer resp.Body.Close()
 
-	fmt.Print(templated)
+	want := "pong\n"
+	got := string(body)
 
+	if want != got {
+		t.Errorf("got %q wanted %q", string(got), string(want))
+		t.Fail()
+	}
 }

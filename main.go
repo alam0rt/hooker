@@ -117,9 +117,9 @@ func decodeMessage(r *http.Request) (m *HookMessage, e error) {
 
 }
 
-func templateMessage(m *HookMessage) (b []byte, err error) {
+func templateMessage(m *HookMessage, t []byte) (b []byte, err error) {
 	var buf bytes.Buffer
-	tmpl, err := template.New("template").Parse(string(TemplateBuffer))
+	tmpl, err := template.New("template").Parse(string(t))
 
 	if err != nil {
 		log.Printf("couldn't template message: %v", err)
@@ -177,7 +177,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("incoming from %v (%v)", r.Host, r.UserAgent())
+	log.Printf("incoming from %v", r.UserAgent())
 
 	message, err := decodeMessage(r)
 	if err != nil {
@@ -185,13 +185,15 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("couldn't decode incoming webhook: %v", err)
 		return
 	}
+	fmt.Print(message)
 
-	templatedMessage, err := templateMessage(message)
+	templatedMessage, err := templateMessage(message, TemplateBuffer)
 	if err != nil {
 		http.Error(w, "invalid request body", 401)
 		log.Printf("couldn't template message: %v", err)
 		return
 	}
+	fmt.Print(templatedMessage)
 
 	jsonResponse, err := encodeMessage(templatedMessage)
 	if err != nil {
@@ -199,11 +201,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("couldn't encode JSON: %v", err)
 		return
 	}
+	fmt.Print(jsonResponse)
 
 	response, err := sendMessage(jsonResponse, token)
 	if err != nil {
 		http.Error(w, "upstream unavailable", 401)
 	}
+	fmt.Print(response)
 
 	log.Printf("successfully relayed message to %v", UpstreamHost)
 	http.Error(w, "success", 200)
