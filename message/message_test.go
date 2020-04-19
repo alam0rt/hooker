@@ -1,13 +1,12 @@
-package main
+package message
 
 import (
-	"io/ioutil"
-	"net/http"
-	"net/url"
-	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-var mockMessage = []byte(`
+var MockHook = []byte(`
 {
   "receiver": "Default",
   "status": "firing",
@@ -70,15 +69,39 @@ var mockMessage = []byte(`
 }
 `)
 
-var Request = &http.Request{
-	Host:   "localhost",
-	Method: http.MethodPost,
-	URL:    &url.URL{Host: "localhost:8080"},
-	Proto:  "HTTP/2",
-	Header: map[string][]string{
-		"Accept-Encoding": {"gzip, deflate"},
-		"Accept-Language": {"en-us"},
-		"Foo":             {"Bar", "two"},
-	},
-	Body: ioutil.NopCloser(strings.NewReader(string(mockMessage))),
+func newMockWebhook() *HookMessage {
+	wh := &HookMessage{}
+	wh.Unmarshal(MockHook)
+	return wh
+}
+
+func newMockMessage() *Message {
+	wh := newMockWebhook()
+	msg := &MatrixMessage{
+		DisplayName: "mock",
+		AvatarURL:   "http://mock.png",
+		Text:        "",
+	}
+	m := &Message{
+		Webhook: *wh,
+		Matrix:  *msg,
+	}
+	return m
+}
+
+func TestUnmarshal(t *testing.T) {
+	wh := &HookMessage{}
+	wh.Unmarshal(MockHook)
+	assert.Equal(t, "firing", wh.Status, "the status should be firing")
+
+	assert.Equal(t, 2, len(wh.Alerts), "there should be 2 alerts")
+
+}
+
+func TestRender(t *testing.T) {
+	m := newMockMessage()
+	m.Template.body = []byte(`{{ .Status -}}`)
+	m.Render()
+	t.Log(m.Matrix)
+	assert.Equal(t, "firing", m.Matrix.Text)
 }

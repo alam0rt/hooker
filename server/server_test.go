@@ -1,13 +1,17 @@
-package main
+package server
 
 import (
-	"io/ioutil"
+	"bytes"
 	"net/http"
-	"net/url"
-	"strings"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-var mockMessage = []byte(`
+const mockURL = "http://localhost:8080"
+
+var MockHook = []byte(`
 {
   "receiver": "Default",
   "status": "firing",
@@ -70,15 +74,50 @@ var mockMessage = []byte(`
 }
 `)
 
-var Request = &http.Request{
-	Host:   "localhost",
-	Method: http.MethodPost,
-	URL:    &url.URL{Host: "localhost:8080"},
-	Proto:  "HTTP/2",
-	Header: map[string][]string{
-		"Accept-Encoding": {"gzip, deflate"},
-		"Accept-Language": {"en-us"},
-		"Foo":             {"Bar", "two"},
-	},
-	Body: ioutil.NopCloser(strings.NewReader(string(mockMessage))),
+func TestPing(t *testing.T) {
+	var expected interface{}
+	var got interface{}
+
+	r, err := http.NewRequest("GET", mockURL+"/ping", nil)
+	assert.Nil(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(ping)
+
+	handler.ServeHTTP(rr, r)
+
+	expected = http.StatusOK
+	got = rr.Code
+	assert.Equal(t, expected, got)
+
+	expected = []byte(`pong`)
+	got = rr.Body.Bytes()
+	assert.Equal(t, expected, got)
+
+}
+
+func TestPostWebhook(t *testing.T) {
+	var expected interface{}
+	var got interface{}
+	var token = "test"
+	var body bytes.Buffer
+
+	// populate body with mock webhook
+	body.Write(MockHook)
+
+	r, err := http.NewRequest("POST", mockURL+path+token, &body)
+	assert.Nil(t, err)
+
+	rr := httptest.NewRecorder()
+	handler := http.HandlerFunc(ingest)
+
+	handler.ServeHTTP(rr, r)
+
+	expected = http.StatusOK
+	got = rr.Code
+	assert.Equal(t, expected, got)
+
+	assert.NotNil(t, rr.Body, "the reply message body is nil")
+	t.Log(rr.Body)
+
 }
